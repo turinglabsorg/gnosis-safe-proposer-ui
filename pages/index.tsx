@@ -13,24 +13,32 @@ const Home: NextPage = () => {
   const { data: walletClient } = useWalletClient({ chainId: account.chainId })
   const [isConnected, setIsConnected] = useState(false)
   const [delegates, setDelegates] = useState([] as string[])
+  const [safeAddresses, setSafeAddresses] = useState([] as string[])
+  const [safeAddress, setSafeAddress] = useState("" as string)
 
-  if (account.address !== undefined && account.chainId !== undefined) {
-    const chainId = BigInt(account.chainId)
-    const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS
-    if (safeAddress !== undefined && !isConnected) {
-      const safeService = new SafeApiKit({ chainId })
-      safeService.getSafeInfo(safeAddress).then(safeInfo => {
-        setIsConnected(true)
-        safeService.getSafeDelegates({ safeAddress }).then(delegateRes => {
-          const delegates = delegateRes.results.map(delegate => delegate.delegate)
-          setDelegates(delegates)
-          console.log("Found delegates:", delegates)
+  function connectToSafe() {
+    if (account.address !== undefined && account.chainId !== undefined) {
+      const chainId = BigInt(account.chainId)
+      const safeAddresses = process.env.NEXT_PUBLIC_SAFE_ADDRESS
+      if (safeAddresses !== undefined && !isConnected) {
+        const safes = safeAddresses.split(",")
+        console.log(safes)
+        setSafeAddresses(safes)
+        setSafeAddress(safes[0])
+        const safeService = new SafeApiKit({ chainId })
+        safeService.getSafeInfo(safes[0]).then(safeInfo => {
+          setIsConnected(true)
+          safeService.getSafeDelegates({ safeAddress: safes[0] }).then(delegateRes => {
+            const delegates = delegateRes.results.map(delegate => delegate.delegate)
+            setDelegates(delegates)
+            console.log("Found delegates:", delegates)
+          }).catch(e => {
+            console.log("Error getting delegates:", e.message)
+          })
         }).catch(e => {
-          console.log("Error getting delegates:", e.message)
+          console.log("Error getting Safe info:", e.message)
         })
-      }).catch(e => {
-        console.log("Error getting Safe info:", e.message)
-      })
+      }
     }
   }
 
@@ -48,12 +56,28 @@ const Home: NextPage = () => {
     }
   }
 
-  async function addDelegator() {
-    const delegateAddress = document.getElementById('delegator-address') as HTMLInputElement
-    console.log("Delegator address:", delegateAddress.value)
+  function changeSafeAddress(event: any) {
+    const safeAddress = event.target.value
+    setSafeAddress(safeAddress)
     if (account.address !== undefined && account.chainId !== undefined) {
       const chainId = BigInt(account.chainId)
-      const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS
+      const safeService = new SafeApiKit({ chainId })
+      safeService.getSafeDelegates({ safeAddress }).then(delegateRes => {
+        const delegates = delegateRes.results.map(delegate => delegate.delegate)
+        setDelegates(delegates)
+        console.log("Found delegates:", delegates)
+      }).catch(e => {
+        console.log("Error getting delegates:", e.message)
+      })
+    }
+  }
+
+  function addDelegate() {
+    const delegateAddress = document.getElementById('delegate-address') as HTMLInputElement
+    const delegateLabel = document.getElementById('delegate-label') as HTMLInputElement
+    console.log("Delegate address:", delegateAddress.value)
+    if (account.address !== undefined && account.chainId !== undefined) {
+      const chainId = BigInt(account.chainId)
       if (safeAddress !== undefined) {
         const safeService = new SafeApiKit({ chainId })
         safeService.getSafeInfo(safeAddress).then(safeInfo => {
@@ -63,13 +87,14 @@ const Home: NextPage = () => {
           if (walletClient !== undefined) {
             const signer = walletClientToSigner(walletClient)
             if (signer !== undefined) {
-              safeService.addSafeDelegate({ safeAddress, delegateAddress: delegateAddress.value, delegatorAddress, label: "test", signer }).then(delegateRes => {
+              safeService.addSafeDelegate({ safeAddress, delegateAddress: delegateAddress.value, delegatorAddress, label: delegateLabel.value, signer }).then(delegateRes => {
                 console.log("Delegator added.")
                 safeService.getSafeDelegates({ safeAddress }).then(delegateRes => {
                   const delegates = delegateRes.results.map(delegate => delegate.delegate)
                   setDelegates(delegates)
                   console.log("Found delegates:", delegates)
                   delegateAddress.value = ""
+                  delegateLabel.value = ""
                 }).catch(e => {
                   console.log("Error getting delegates:", e.message)
                 })
@@ -81,10 +106,9 @@ const Home: NextPage = () => {
     }
   }
 
-  async function removeDelegator(delegateAddress: string) {
+  function removeDelegator(delegateAddress: string) {
     if (account.address !== undefined && account.chainId !== undefined) {
       const chainId = BigInt(account.chainId)
-      const safeAddress = process.env.NEXT_PUBLIC_SAFE_ADDRESS
       if (safeAddress !== undefined) {
         const safeService = new SafeApiKit({ chainId })
         safeService.getSafeInfo(safeAddress).then(safeInfo => {
@@ -125,19 +149,26 @@ const Home: NextPage = () => {
       <main className={styles.main}>
         <ConnectButton />
         {isConnected && <div>
-          <h2>Connected to Safe Correctly</h2>
+          <h2>Manage delegates</h2>
+          <select id="safe-address" onChange={changeSafeAddress} className="input">
+            {safeAddresses.map(safe => <option key={safe} value={safe}>{safe}</option>)}
+          </select>
           <h3>Delegates: {delegates.length}</h3>
           {delegates.map(delegate => <div className='delegates' key={delegate}>
             {delegate}
             <button onClick={() => removeDelegator(delegate)} className="remove">🗑️</button>
           </div>)}
-          <input type="text" id="delegator-address" className="input" placeholder="Delegator address" />
-          <button onClick={addDelegator} className="button">Add delegator</button>
+          <input type="text" id="delegate-address" className="input" placeholder="Delegate address" />
+          <input type="text" id="delegate-label" className="input" placeholder="Delegate label" />
+          <button onClick={addDelegate} className="button">Add delegator</button>
         </div>}
-        {!isConnected && <h2>Not connected to Safe</h2>}
-      </main>
+        {!isConnected && <div>
+          <h2>Connect to Safe first</h2>
+          <button onClick={connectToSafe} className="button">Connect to Safe</button>
+        </div>}
+      </main >
 
-    </div>
+    </div >
   );
 };
 
